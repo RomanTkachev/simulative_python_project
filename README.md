@@ -96,7 +96,7 @@ python etl.py
 | --- | --- |
 | `etl.py` | Оркестрация: запрос к API, парсинг, загрузка в БД, очистка логов |
 | `classes.py` | `DatabaseConnection` (Singleton-подключение) и `DatabaseOperations` (`insert_rows`, `check_last_date`, `close_connection`) |
-| `utils.py` | `make_logger_for_date` (логгер на дату) и `cleanup_logs` (очистка старых логов) |
+| `utils.py` | `make_logger_for_date` (логгер на дату), `cleanup_logs` (очистка старых логов) и `parse_attempt` (валидация/нормализация записи API) |
 | `logs/` | Лог-файлы, создаются автоматически |
 | `.env` | Локальные переменные окружения (не коммитится) |
 | `.env.example` | Шаблон `.env` |
