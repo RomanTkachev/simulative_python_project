@@ -4,7 +4,7 @@ from psycopg2.extras import execute_values
 import ast
 import logging 
 import os 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from classes import DatabaseConnection, DatabaseOperations
 from dotenv import load_dotenv
 from pathlib import Path
@@ -31,7 +31,7 @@ print(current_last_date)
 
 #Генерируем список дат для демонстрации загрузки (когда будет airflow – заменим на логическую дату)
 
-START_DT = current_last_date if current_last_date else datetime(2026,5,23,0,0,0,0,None) #для демонстрации при пустой БД берем 10 дней мая для загрузки
+START_DT = datetime.combine(current_last_date, time.min) if current_last_date else datetime(2026,5,23,0,0,0,0,None) #для демонстрации при пустой БД берем 10 дней мая для загрузки
 END_DT = datetime(2026,6,1,0,0,0,0,None) #ограничения API, данные доступны только до июня 2026 года
 
 days = (END_DT - START_DT).days 
