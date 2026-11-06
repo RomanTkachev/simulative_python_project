@@ -14,6 +14,54 @@ from utils import make_logger_for_date, cleanup_logs
 
 KEEP_LOG_DAYS = 3  #сколько дней храним логи
 
+ATTEMPT_TYPE_MAX_LEN = 10  #ограничение varchar(10) в it_resume.grader_usage
+
+
+def parse_attempt(item, logger):
+    '''Валидирует и нормализует одну запись из ответа API.
+
+    Возвращает кортеж в порядке колонок it_resume.grader_usage
+    или None, если запись невалидна и её нужно пропустить.'''
+
+    if not isinstance(item, dict):
+        logger.warning('Пропуск записи: элемент ответа не является объектом')
+        return None
+
+    try:
+        passback_params_string = item.get('passback_params')
+        params_dict = ast.literal_eval(passback_params_string) if passback_params_string else {}
+        if not isinstance(params_dict, dict):
+            params_dict = {}
+    except (ValueError, SyntaxError, TypeError) as err:
+        logger.warning(f'Некорректный passback_params, поля пропущены: {err}')
+        params_dict = {}
+
+    user_id = item.get('lti_user_id')
+    created_at = item.get('created_at')
+    if not user_id or not created_at:
+        logger.warning('Пропуск записи без обязательного user_id или created_at')
+        return None
+
+    attempt_type = item.get('attempt_type')
+    if isinstance(attempt_type, str) and len(attempt_type) > ATTEMPT_TYPE_MAX_LEN:
+        logger.warning(f'attempt_type обрезан до {ATTEMPT_TYPE_MAX_LEN} символов: {attempt_type!r}')
+        attempt_type = attempt_type[:ATTEMPT_TYPE_MAX_LEN]
+
+    is_correct = item.get('is_correct')
+    if isinstance(is_correct, bool):
+        is_correct = int(is_correct)
+
+    #порядок элементов соответствует порядку колонок в INSERT (classes.py)
+    return (
+        user_id,
+        params_dict.get('oauth_consumer_key'),
+        params_dict.get('lis_result_sourcedid'),
+        params_dict.get('lis_outcome_service_url'),
+        is_correct,
+        attempt_type,
+        created_at,
+    )
+
 
 def main():
     #Загружаем переменные окружения
@@ -67,43 +115,23 @@ def main():
 
                 logger.info(f'Данные получены, запускается парсинг')
 
-                attempts = []
+                payload = response.json()
+                if not isinstance(payload, list):
+                    raise ValueError(f'Ответ API имеет неожиданный формат: {type(payload).__name__}')
 
-                for i in response.json():
+                rows = []
+                skipped = 0
+                for item in payload:
+                    row = parse_attempt(item, logger)
+                    if row is None:
+                        skipped += 1
+                        continue
+                    rows.append(row)
 
-                    try:
-                        passback_params_string = i.get('passback_params')
-                        params_dict = ast.literal_eval(passback_params_string) if passback_params_string else {}
+                if skipped:
+                    logger.warning(f'Пропущено невалидных записей: {skipped}')
 
-                        attempt= {
-                            'user_id':i.get('lti_user_id', None),
-                            'oauth_consumer_key': params_dict.get('oauth_consumer_key', None),
-                            'lis_result_sourcedid': params_dict.get('lis_result_sourcedid', None),
-                            'lis_outcome_service_url': params_dict.get('lis_outcome_service_url', None),
-                            'is_correct': i.get('is_correct', None),
-                            'attempt_type': i.get('attempt_type', None),
-                            'created_at': i.get('created_at', None)
-                        }
-
-                        attempts.append(attempt)
-
-                    except Exception as err:
-                        logger.error(f"Ошибка на этапе парсинга {err}")
-                        raise
-
-                cols_db_table = [
-                    'user_id',
-                    'oauth_consumer_key',
-                    'lis_result_sourcedid',
-                    'lis_outcome_service_url',
-                    'is_correct',
-                    'attempt_type',
-                    'created_at'
-                ]
-
-                logger.info(f'Данные распарсились, готовим к загрузке')
-
-                rows = [tuple(d.get(col) for col in cols_db_table) for d in attempts]
+                logger.info(f'Данные распарсились, готовим к загрузке: {len(rows)} строк')
 
                 try:
                     logger.info(f'Загружаем данные в БД')
