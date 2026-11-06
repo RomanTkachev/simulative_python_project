@@ -1,8 +1,5 @@
 import requests
-import psycopg2
-from psycopg2.extras import execute_values
 import ast
-import logging
 import os
 import sys
 from datetime import datetime, timedelta, time
